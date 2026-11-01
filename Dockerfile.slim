@@ -1,0 +1,4 @@
+FROM ghcr.io/wlekin/h3-flex:bench-1
+COPY slim_worker.py /app/slim_worker.py
+RUN python -m py_compile /app/slim_worker.py
+ENTRYPOINT ["python", "-u", "/app/slim_worker.py"]
