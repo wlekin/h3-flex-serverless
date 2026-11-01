@@ -1,0 +1,5 @@
+FROM ghcr.io/wlekin/h3-flex:1.0@sha256:7218722765a08f5747d33d65cd943febf72ed5c880005d7bd704c1cc541e243e
+RUN python -m pip install --no-cache-dir --no-deps bitsandbytes==0.50.0
+COPY benchmark_worker.py /app/benchmark_worker.py
+RUN python -m py_compile /app/benchmark_worker.py
+ENTRYPOINT ["python", "-u", "/app/benchmark_worker.py"]
