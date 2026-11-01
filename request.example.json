@@ -1,0 +1,11 @@
+{
+  "input": {
+    "task": "t2va",
+    "prompt": "A small sailboat crosses a calm lake at sunrise. Gentle ripples and birdsong.",
+    "resolution": "480p",
+    "aspect": "16:9",
+    "duration": 5,
+    "seed": 42,
+    "cpu_offload": true
+  }
+}
