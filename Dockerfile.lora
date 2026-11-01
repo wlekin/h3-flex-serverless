@@ -1,0 +1,4 @@
+FROM ghcr.io/wlekin/h3-flex:bench-1
+COPY lora_bundle.py /app/lora_worker.py
+RUN python /app/lora_worker.py --self-test
+ENTRYPOINT ["python", "-u", "/app/lora_worker.py"]
