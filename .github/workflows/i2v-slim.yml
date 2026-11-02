@@ -23,4 +23,4 @@ jobs:
           file: Dockerfile.i2v-slim
           platforms: linux/amd64
           push: true
-          tags: ghcr.io/wlekin/h3-flex:i2v-slim-2
+          tags: ghcr.io/wlekin/h3-flex:i2v-slim-3
