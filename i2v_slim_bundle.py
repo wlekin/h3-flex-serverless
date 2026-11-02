@@ -9,9 +9,12 @@ import struct
 
 
 def convert(source, destination, dimensions=(5376, 7168, 14336)):
-    raw = Path(source).read_bytes()
-    if not 8 < len(raw) <= 256 * 1024**2:
-        raise ValueError('LoRA file must be at most256MiB')
+    source = Path(source)
+    if not 8 < source.stat().st_size <= 1024 * 1024**2:
+        raise ValueError('LoRA file must be at most 1024 MiB')
+    raw = source.read_bytes()
+    if not 8 < len(raw) <= 1024 * 1024**2:
+        raise ValueError('LoRA file must be at most 1024 MiB')
     length = struct.unpack('<Q', raw[:8])[0]
     if not 2 <= length <= min(len(raw)-8, 8*1024**2):
         raise ValueError('Invalid safetensors header')
