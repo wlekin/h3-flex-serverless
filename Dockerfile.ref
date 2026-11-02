@@ -1,0 +1,4 @@
+FROM ghcr.io/wlekin/h3-flex:i2v-slim-3
+COPY ref_worker.py /app/ref_worker.py
+RUN python -m py_compile /app/ref_worker.py
+ENTRYPOINT ["python", "-u", "/app/ref_worker.py"]
