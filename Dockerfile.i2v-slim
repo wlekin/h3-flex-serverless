@@ -1,0 +1,4 @@
+FROM ghcr.io/wlekin/h3-flex:i2v-1
+COPY i2v_slim_bundle.py /app/lora_worker.py
+RUN python /app/lora_worker.py --self-test
+ENTRYPOINT ["python", "-u", "/app/lora_worker.py"]
