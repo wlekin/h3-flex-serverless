@@ -20,8 +20,8 @@ def convert(source, destination, dimensions=(5376, 7168, 14336)):
         raise ValueError('Invalid safetensors header')
     header = json.loads(raw[8:8+length])
     metadata = header.pop('__metadata__', {})
-    if metadata.get('ss_base_model_version') != 'minimax_h3':
-        raise ValueError('Expected an AI Toolkit minimax_h3 LoRA')
+    if metadata.get('ss_base_model_version') not in (None, 'minimax_h3'):
+        raise ValueError('LoRA metadata identifies a different base model')
     payload = memoryview(raw)[8+length:]
     end = 0
     for start, stop, key in sorted((v['data_offsets'][0], v['data_offsets'][1], k) for k,v in header.items()):
@@ -46,13 +46,14 @@ def convert(source, destination, dimensions=(5376, 7168, 14336)):
     hidden, inner, ffn = dimensions
     converted = {}
     ranks = set()
+    rank_pattern = {}
     for (prefix,module), pair in groups.items():
         if set(pair) != {'A','B'}:
             raise ValueError('Incomplete LoRA A/B pair')
         a,b = pair['A'],pair['B']
         rank = a['shape'][0]
         expected = {'qkv_proj':(hidden,3*inner),'out_proj':(inner,hidden),'fc1':(hidden,2*ffn),'fc2':(ffn,hidden)}[module]
-        if not 1<=rank<=64 or a['shape'] != [rank,expected[0]] or b['shape'] != [expected[1],rank]:
+        if not 1<=rank<=256 or a['shape'] != [rank,expected[0]] or b['shape'] != [expected[1],rank]:
             raise ValueError('LoRA shapes do not match MiniMax H3')
         ranks.add(rank)
         ad = bytes(payload[slice(*a['data_offsets'])]); bd = bytes(payload[slice(*b['data_offsets'])])
@@ -65,12 +66,13 @@ def convert(source, destination, dimensions=(5376, 7168, 14336)):
             targets=[({'out_proj':'attn.to_out.0','fc2':'ff.net.2'}[module],bd,expected[1])]
         for target, data, rows in targets:
             name=prefix+'.'+target
+            rank_pattern[name]=rank
             converted[name+'.lora_A.weight']=([rank,expected[0]],ad)
             converted[name+'.lora_B.weight']=([rows,rank],data)
-    if not converted or len(ranks)!=1:
-        raise ValueError('Expected a nonempty, uniform-rank LoRA')
-    rank=ranks.pop()
-    output={'__metadata__':{'source_sha256':hashlib.sha256(raw).hexdigest(),'conversion':'ai-toolkit-h3-to-diffusers-v1','rank':str(rank),'default_alpha':str(rank)}}
+    if not converted:
+        raise ValueError('Expected a nonempty H3 LoRA')
+    rank=max(ranks)
+    output={'__metadata__':{'source_sha256':hashlib.sha256(raw).hexdigest(),'conversion':'ai-toolkit-h3-to-diffusers-v2','rank':str(rank),'rank_pattern':json.dumps(rank_pattern),'default_scaling':'alpha equals each module rank'}}
     chunks=[]; offset=0
     for key,(shape,data) in sorted(converted.items()):
         output[key]={'dtype':'BF16','shape':shape,'data_offsets':[offset,offset+len(data)]}
@@ -81,7 +83,18 @@ def convert(source, destination, dimensions=(5376, 7168, 14336)):
     temporary=destination.with_suffix('.tmp')
     temporary.write_bytes(struct.pack('<Q',len(encoded))+encoded+b''.join(chunks))
     temporary.replace(destination)
-    return dict(rank=rank,source_sha256=output['__metadata__']['source_sha256'],modules=len(converted)//2)
+    return dict(rank=rank,ranks=sorted(ranks),rank_pattern=rank_pattern,source_sha256=output['__metadata__']['source_sha256'],modules=len(converted)//2)
+
+
+
+def adapter_options(info, alpha=None):
+    # PEFT uses alpha/r scaling per target. Missing source alpha means unity,
+    # including merged adapters whose layers have different ranks.
+    pattern=info['rank_pattern']
+    return dict(r=info['rank'],lora_alpha=alpha if alpha is not None else info['rank'],
+                target_modules=sorted(pattern),rank_pattern=dict(pattern),
+                alpha_pattern={name:alpha if alpha is not None else rank for name,rank in pattern.items()},
+                init_lora_weights=False)
 
 
 def attach(model, specs, volume):
@@ -103,8 +116,8 @@ def attach(model, specs, volume):
         if any(name not in own_modules for name in modules):
             raise ValueError('Converted LoRA targets missing model modules')
         name='user_'+str(index)
-        alpha=spec.get('alpha',info['rank'])
-        model.add_adapter(LoraConfig(r=info['rank'],lora_alpha=alpha,target_modules=modules,init_lora_weights=False),adapter_name=name)
+        alpha=spec.get('alpha')
+        model.add_adapter(LoraConfig(**adapter_options(info,alpha)),adapter_name=name)
         own=dict(model.named_parameters())
         with torch.no_grad():
             for key,value in state.items():
@@ -114,7 +127,7 @@ def attach(model, specs, volume):
                 own[target].copy_(value.to(device=own[target].device,dtype=own[target].dtype))
                 own[target].requires_grad_(False)
         names.append(name);weights.append(spec['strength'])
-        reports.append({**info,'name':spec['name'],'strength':spec['strength'],'alpha':alpha})
+        reports.append({**{k:v for k,v in info.items() if k!='rank_pattern'},'name':spec['name'],'strength':spec['strength'],'alpha':alpha if alpha is not None else 'per-module rank'})
     if specs:
         model.set_adapters(names,weights=weights)
     return reports
@@ -345,6 +358,44 @@ class ConversionTests(unittest.TestCase):
         self.assertIn("'--base-path','/runpod-volume/h3-flex/native-assets/base'", runtime)
         self.assertIn("'--adapter-path','/runpod-volume/h3-flex/native-assets/adapter/fl2va'", runtime)
         self.assertIn("nf4-i2v-slim-v1", runtime)
+
+    def test_missing_metadata_and_mixed_ranks_preserve_layer_shapes(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            src=Path(tmp)/'in';dst=Path(tmp)/'out'
+            q='diffusion_model.blocks.0.attn.qkv_proj';f='diffusion_model.blocks.0.mlp.fc2'
+            write(src,{q+'.lora_A.weight':([80,2],[1]*160),q+'.lora_B.weight':([6,80],[1]*480),
+                       f+'.lora_A.weight':([48,3],[1]*144),f+'.lora_B.weight':([2,48],[1]*96)})
+            raw=src.read_bytes();n=struct.unpack('<Q',raw[:8])[0];h=json.loads(raw[8:8+n]);h['__metadata__']={'format':'pt'}
+            encoded=json.dumps(h).encode();src.write_bytes(struct.pack('<Q',len(encoded))+encoded+raw[8+n:])
+            info=convert(src,dst,dimensions=(2,2,3));opts=adapter_options(info)
+            self.assertEqual(info['ranks'],[48,80]);self.assertEqual(info['modules'],4)
+            self.assertEqual(opts['rank_pattern']['transformer_blocks.0.attn.to_q'],80)
+            self.assertEqual(opts['rank_pattern']['transformer_blocks.0.ff.net.2'],48)
+            self.assertEqual(opts['alpha_pattern'],opts['rank_pattern'])
+            self.assertTrue(all(v==24 for v in adapter_options(info,24)['alpha_pattern'].values()))
+            self.assertEqual(len(read(dst)['transformer_blocks.0.attn.to_q.lora_B.weight']),160)
+
+    def test_wrong_declared_base_is_rejected(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            src=Path(tmp)/'in';h=json.dumps({'__metadata__':{'ss_base_model_version':'wan'}}).encode()
+            src.write_bytes(struct.pack('<Q',len(h))+h)
+            with self.assertRaisesRegex(ValueError,'different base model'):convert(src,Path(tmp)/'out')
+
+    def test_peft_mixed_rank_cpu_injection(self):
+        try:
+            import torch
+            from peft import LoraConfig,inject_adapter_in_model
+        except ImportError:
+            self.skipTest('PEFT/torch integration runs in the container build')
+        model=torch.nn.Module();model.transformer_blocks=torch.nn.ModuleList([torch.nn.Module()])
+        block=model.transformer_blocks[0];block.attn=torch.nn.Module();block.attn.to_q=torch.nn.Linear(2,2,bias=False)
+        block.ff=torch.nn.Module();block.ff.net=torch.nn.ModuleList([torch.nn.Identity(),torch.nn.Identity(),torch.nn.Linear(3,2,bias=False)])
+        pattern={'transformer_blocks.0.attn.to_q':80,'transformer_blocks.0.ff.net.2':48}
+        inject_adapter_in_model(LoraConfig(**adapter_options({'rank':80,'rank_pattern':pattern})),model,adapter_name='mixed')
+        self.assertEqual(block.attn.to_q.lora_A['mixed'].weight.shape,(80,2))
+        self.assertEqual(block.ff.net[2].lora_A['mixed'].weight.shape,(48,3))
+        self.assertEqual(block.attn.to_q.scaling['mixed'],1)
+        self.assertEqual(block.ff.net[2].scaling['mixed'],1)
 
     def test_rejects_paths_nan_and_duplicate_specs(self):
         for specs in [[{'name':'../a.safetensors'}],[{'name':'a.safetensors','strength':float('nan')}],[{'name':'a.safetensors'}]*2]:
