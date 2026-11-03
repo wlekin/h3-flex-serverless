@@ -23,8 +23,8 @@ class TurboTest(unittest.TestCase):
   base.handler=handler
   with patch.dict(sys.modules,{'handler':base,'lora_worker':types.SimpleNamespace(validate_loras=lambda x:x),'runpod':types.SimpleNamespace(serverless=types.SimpleNamespace(start=lambda d:registered.update(d)))}):
    turbo.parent();h=registered['handler']
-   out=h({'input':{'profile':'compare','task':'ref2va','references':[{'kind':'image','base64':'x'}]}})
-   self.assertEqual(set(out),{'baseline','turbo'});self.assertEqual(captured[0][1],'/app/ref_worker.py');self.assertTrue(captured[1][1].endswith('turbo_worker.py'))
-   self.assertIn('error',h({'input':{'task':'i2va'}}))
+   out=h({'input':{'task':'i2va'}});h({'input':{'profile':'turbo-ref-lite-4','task':'ref2va','references':[{'kind':'image','base64':'x'}]}})
+   self.assertIn('metadata',out);self.assertEqual(captured[0][1],'/app/ref_worker.py');self.assertTrue(captured[1][1].endswith('turbo_worker.py'))
+   self.assertIn('fl2va',captured[0][-1]);self.assertIn('error',h({'input':{'profile':'turbo-ref-lite-4','task':'i2va'}}));self.assertIn('error',h({'input':{'profile':'compare','task':'ref2va'}}))
 
 if __name__=='__main__':unittest.main()

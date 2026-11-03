@@ -1,4 +1,4 @@
-"""Isolated qualification worker; production defaults and files are untouched."""
+"""H3 standard six-step worker with opt-in four-step Ref2VA Lite."""
 import contextvars
 import json
 from pathlib import Path
@@ -56,11 +56,12 @@ def parent():
     import handler as base
     import lora_worker as slim
     import runpod
-    context=contextvars.ContextVar('profile',default=('turbo',[]));original=base.command
+    context=contextvars.ContextVar('profile',default=('baseline',[]));original=base.command
     def command(request,workdir,output):
         profile,specs=context.get();config=workdir/'custom-loras.json';config.write_text(json.dumps(specs))
         argv=original(request,workdir,output)
-        argv+=['--base-path',str(ROOT/'native-assets/base'),'--adapter-path',str(ROOT/'native-assets/adapter/ref2va')]
+        adapter='ref2va' if request['task']=='ref2va' else 'fl2va'
+        argv+=['--base-path',str(ROOT/'native-assets/base'),'--adapter-path',str(ROOT/'native-assets/adapter'/adapter)]
         entry=__file__ if profile=='turbo' else '/app/ref_worker.py'
         return [sys.executable,entry,'--child',str(config),*argv[1:]]
     base.command=command
@@ -74,15 +75,14 @@ def parent():
     def handler(job):
         raw=job.get('input')
         if not isinstance(raw,dict):return {'error':'input must be an object'}
-        data=dict(raw);profile=data.pop('profile','turbo')
-        if profile not in ('turbo','baseline','compare'):return {'error':'Unsupported qualification profile'}
-        if data.get('task')!='ref2va' or data.get('cpu_offload') is True:return {'error':'Ref2VA without CPU offload required'}
+        data=dict(raw);profile=data.pop('profile','standard')
+        if profile not in ('standard','baseline','turbo-ref-lite-4','turbo'):return {'error':'Unsupported H3 profile'}
+        profile='turbo' if profile in ('turbo-ref-lite-4','turbo') else 'baseline'
+        task=data.get('task','t2va')
+        if task not in ('t2va','i2va','ref2va') or data.get('cpu_offload') is True:return {'error':'Supported tasks: t2va/i2va/ref2va without CPU offload'}
+        if profile=='turbo' and task!='ref2va':return {'error':'Four-step Lite requires image reference mode'}
         data.setdefault('cpu_offload',False)
         try:
-            if profile=='compare':
-                baseline=run(dict(data),'baseline')
-                if baseline.get('error'):return {'baseline':baseline,'error':'Baseline failed; Turbo not run'}
-                return {'baseline':baseline,'turbo':run(dict(data),'turbo')}
             return run(data,profile)
         except (ValueError,TypeError) as e:return {'error':str(e)}
     runpod.serverless.start({'handler':handler})
