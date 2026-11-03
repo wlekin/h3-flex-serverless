@@ -1,0 +1,4 @@
+FROM ghcr.io/wlekin/h3-flex:ref-lora-1
+COPY turbo_worker.py turbo_lite.py /app/
+RUN python -m py_compile /app/turbo_worker.py /app/turbo_lite.py
+ENTRYPOINT ["python", "-u", "/app/turbo_worker.py"]
