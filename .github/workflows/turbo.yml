@@ -1,0 +1,24 @@
+name: Build H3 Turbo Lite test
+on:
+  push:
+    paths: [Dockerfile.turbo, turbo_worker.py, turbo_lite.py, .github/workflows/turbo.yml]
+  workflow_dispatch:
+permissions:
+  contents: read
+  packages: write
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: Dockerfile.turbo
+          push: true
+          tags: ghcr.io/wlekin/h3-flex:turbo-ref-lite-test-1
