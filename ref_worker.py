@@ -88,8 +88,6 @@ def parent():
         except ValueError as e:return {'error':str(e)}
         data.setdefault('cpu_offload',False)
         if data.get('action')!='health' and (data.get('task','t2va') not in ('t2va','i2va','ref2va') or data['cpu_offload']):return {'error':'Supported tasks: t2va/i2va/ref2va without CPU offload'}
-        # Extra user adapters are unqualified for the reference trunk.
-        if data.get('task')=='ref2va' and specs:return {'error':'Custom LoRAs are not yet qualified for Ref2VA. Disable them for this experimental mode.'}
         token=context.set(specs)
         try:return base.handler({**job,'input':data})
         finally:context.reset(token)
@@ -103,4 +101,4 @@ if __name__=='__main__':
         sys.argv=[sys.argv[0],*sys.argv[3:]]
         slim.nf4_child=ref_child
         slim.child(specs)
-    else:parent()
+    else:parent()

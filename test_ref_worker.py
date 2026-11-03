@@ -15,9 +15,19 @@ class ReferenceWorkerTest(unittest.TestCase):
   with tempfile.TemporaryDirectory() as d:
    for task,adapter in [('ref2va','ref2va'),('i2va','fl2va')]:
     command=self.base.command({'task':task},Path(d),Path(d)/'out.mp4');self.assertIn(str(ref.ROOT/'native-assets/adapter'/adapter),command)
- def test_reference_loras_rejected_and_no_implicit_conversion(self):
-  h=self.registered['handler'];self.assertIn('not yet qualified',h({'input':{'task':'ref2va','loras':[{'name':'a'}]}})['error'])
-  result=h({'input':{'task':'ref2va','references':[{'kind':'image','base64':'test'}]}});self.assertEqual(result['input']['task'],'ref2va');self.assertFalse(result['input']['cpu_offload'])
+ def test_reference_loras_are_forwarded_without_leaking_between_jobs(self):
+  import tempfile,json
+  captured=[]
+  def generate(job):
+   with tempfile.TemporaryDirectory() as d:
+    argv=self.base.command({'task':job['input']['task']},Path(d),Path(d)/'out.mp4')
+    captured.append(json.loads(Path(argv[3]).read_text()))
+   return job
+  self.base.handler=generate;h=self.registered['handler']
+  spec={'name':'compatible.safetensors','strength':0.5}
+  result=h({'input':{'task':'ref2va','loras':[spec],'references':[{'kind':'image','base64':'test'}]}})
+  self.assertEqual(captured[-1],[spec]);self.assertNotIn('loras',result['input']);self.assertFalse(result['input']['cpu_offload'])
+  h({'input':{'task':'ref2va','references':[{'kind':'image','base64':'test'}]}});self.assertEqual(captured[-1],[])
  def test_other_tasks_and_offload_rejected(self):
   for data in [{'task':'l2va'},{'task':'ref2va','cpu_offload':True}]:self.assertIn('error',self.registered['handler']({'input':data}))
 if __name__=='__main__':unittest.main()
