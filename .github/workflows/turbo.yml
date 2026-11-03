@@ -1,4 +1,4 @@
-name: Build H3 Turbo Lite test
+name: Build H3 standard and Turbo Lite
 on:
   push:
     paths: [Dockerfile.turbo, turbo_worker.py, turbo_lite.py, .github/workflows/turbo.yml]
@@ -21,4 +21,4 @@ jobs:
           context: .
           file: Dockerfile.turbo
           push: true
-          tags: ghcr.io/wlekin/h3-flex:turbo-ref-lite-test-1
+          tags: ghcr.io/wlekin/h3-flex:ref-turbo-lite-1
