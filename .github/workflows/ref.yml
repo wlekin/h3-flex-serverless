@@ -1,4 +1,4 @@
-name: Build H3 Ref2VA experimental worker
+name: Build H3 Ref2VA LoRA worker
 on:
   workflow_dispatch:
 permissions:
@@ -23,4 +23,4 @@ jobs:
           file: Dockerfile.ref
           platforms: linux/amd64
           push: true
-          tags: ghcr.io/wlekin/h3-flex:ref-experimental-1
+          tags: ghcr.io/wlekin/h3-flex:ref-lora-1
