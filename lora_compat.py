@@ -20,7 +20,7 @@ def read_header(source):
         if len(prefix) != 8:
             raise ValueError("Invalid LoRA safetensors header")
         length = struct.unpack("<Q", prefix)[0]
-        if not 2 <= length <= 8 * 1024**2 or length + 8 >= source.stat().st_size:
+        if not 2 <= length <= 8 * 1024**2 or length + 8 > source.stat().st_size:
             raise ValueError("Invalid LoRA safetensors header")
         header = json.loads(file.read(length))
     metadata = header.pop("__metadata__", {})
@@ -151,3 +151,4 @@ def convert(source, destination, dimensions=(5376, 7168, 14336)):
 
 """
     target.write_text(code.replace("def adapter_options(", hook + "def adapter_options(", 1))
+
