@@ -1,0 +1,3 @@
+FROM ghcr.io/wlekin/h3-flex:resident-worker-1
+COPY lora_compat.py /app/
+RUN python /app/lora_compat.py && python /app/lora_worker.py --self-test

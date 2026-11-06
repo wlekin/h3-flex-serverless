@@ -12,6 +12,8 @@ KOHYA = re.compile(
     r"\.(alpha|lora_down\.weight|lora_up\.weight)"
 )
 MAX_BYTES = 1024**3
+MYSTIC_V5_SHA256 = "f57c76e761f7a5113e541ad58e84c648a5fe4d3cfbc277d0c44ae9763da29afe"
+MYSTIC_V5_METADATA = "Schwifty-9K-Morty-Proof (Chuck Norris Edition)"
 
 
 def read_header(source):
@@ -24,11 +26,15 @@ def read_header(source):
             raise ValueError("Invalid LoRA safetensors header")
         header = json.loads(file.read(length))
     metadata = header.pop("__metadata__", {})
-    if metadata.get("ss_base_model_version") not in (None, "minimax_h3"):
+    verified_mystic = False
+    if metadata.get("ss_base_model_version") == MYSTIC_V5_METADATA:
+        with source.open("rb") as file:
+            verified_mystic = hashlib.file_digest(file, "sha256").hexdigest() == MYSTIC_V5_SHA256
+    if not verified_mystic and metadata.get("ss_base_model_version") not in (None, "minimax_h3"):
         raise ValueError("LoRA metadata identifies a different base model")
     if not header:
         raise ValueError("LoRA has no tensors")
-    return header, metadata, length + 8
+    return header, metadata, length + 8, verified_mystic
 
 
 def normalize(source, destination, header, metadata, offset, kohya):
@@ -119,7 +125,7 @@ def convert_compatible(source, destination, strict, **kwargs):
     if not 8 < source.stat().st_size <= MAX_BYTES:
         raise ValueError("LoRA file must be at most 1024 MiB")
     try:
-        header, metadata, offset = read_header(source)
+        header, metadata, offset, verified_mystic = read_header(source)
         kohya = any(name.startswith("lora_unet_") for name in header)
         if not kohya and all(item["dtype"] == "BF16" for item in header.values()):
             return strict(source, destination, **kwargs)
@@ -128,7 +134,12 @@ def convert_compatible(source, destination, strict, **kwargs):
         with tempfile.TemporaryDirectory(prefix="h3-lora-") as tmp:
             normalized = Path(tmp) / "normalized.safetensors"
             normalize(source, normalized, header, metadata, offset, kohya)
-            info = strict(normalized, destination, **kwargs)
+            if verified_mystic:
+                info = strict(normalized, destination, allow_audio=True, **kwargs)
+                info["audio_targets"] = ["audio_proj_in", "audio_proj_out"]
+                info["adapter_scale_assumption"] = "alpha equals rank (16)"
+            else:
+                info = strict(normalized, destination, **kwargs)
         with source.open("rb") as file:
             info["source_sha256"] = hashlib.file_digest(file, "sha256").hexdigest()
         return info
@@ -136,13 +147,39 @@ def convert_compatible(source, destination, strict, **kwargs):
         raise ValueError("Invalid H3 LoRA tensor metadata") from exc
 
 
-if __name__ == "__main__":
-    target = Path("/app/lora_worker.py")
-    code = target.read_text()
+def patch_worker(code):
+    def replace_once(before, after):
+        nonlocal code
+        if code.count(before) != 1:
+            raise RuntimeError("Unexpected H3 LoRA worker source: " + before)
+        code = code.replace(before, after)
+
     before = "def convert(source, destination, dimensions=(5376, 7168, 14336)):"
-    if code.count(before) != 1:
-        raise RuntimeError("Unexpected H3 LoRA converter in base image")
-    code = code.replace(before, before.replace("def convert(", "def _convert_bf16("))
+    replace_once(before, "def _convert_bf16(source, destination, dimensions=(5376, 7168, 14336), *, allow_audio=False):")
+    replace_once("    groups = {}\n    for key, item in header.items():", """    audio_names = {
+        "audio_patch_proj": "audio_proj_in",
+        "final_layer.audio_out": "audio_proj_out",
+    }
+    groups = {}
+    for key, item in header.items():
+        if allow_audio:
+            audio = re.fullmatch(r"diffusion_model\\.(audio_patch_proj|final_layer\\.audio_out)\\.lora_([AB])\\.weight", key)
+            if audio:
+                groups.setdefault(("", audio_names[audio.group(1)]), {})[audio.group(2)] = item
+                continue""")
+    replace_once("    hidden, inner, ffn = dimensions", """    if allow_audio and not all(("", name) in groups for name in audio_names.values()):
+        raise ValueError("Verified Mystic V5 requires both audio projections")
+    hidden, inner, ffn = dimensions""")
+    replace_once("'fc2':(ffn,hidden)}[module]", "'fc2':(ffn,hidden),'audio_proj_in':(32,hidden),'audio_proj_out':(hidden,32)}[module]")
+    replace_once("        if module == 'qkv_proj':", """        if module in audio_names.values():
+            if rank != 16:
+                raise ValueError("Verified Mystic V5 audio projections must be rank 16")
+            targets = [(module, bd, expected[1])]
+        elif module == 'qkv_proj':""")
+    replace_once("            name=prefix+'.'+target", "            name=prefix+'.'+target if prefix else target")
+    replace_once("        state=load_file(converted)", """        if info.get("audio_targets") and ("--task" not in sys.argv or sys.argv[sys.argv.index("--task")+1] != "ref2va"):
+            raise ValueError("Mystic V5 audio adapter requires Ref2VA")
+        state=load_file(converted)""")
     hook = """from lora_compat import convert_compatible
 
 def convert(source, destination, dimensions=(5376, 7168, 14336)):
@@ -150,5 +187,16 @@ def convert(source, destination, dimensions=(5376, 7168, 14336)):
 
 
 """
-    target.write_text(code.replace("def adapter_options(", hook + "def adapter_options(", 1))
+    replace_once("def adapter_options(", hook + "def adapter_options(")
+    return code
+
+
+if __name__ == "__main__":
+    target = Path("/app/lora_worker.py")
+    # The parent image already installed the compatibility wrapper.
+    code = target.read_text()
+    start = code.index("from lora_compat import convert_compatible")
+    end = code.index("def adapter_options(", start)
+    code = (code[:start] + code[end:]).replace("def _convert_bf16(", "def convert(", 1)
+    target.write_text(patch_worker(code))
 
