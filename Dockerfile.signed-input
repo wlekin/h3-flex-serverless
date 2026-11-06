@@ -1,0 +1,4 @@
+FROM ghcr.io/wlekin/h3-flex:ref-turbo-lite-1
+COPY signed_input_worker.py /app/
+RUN python -m py_compile /app/signed_input_worker.py
+ENTRYPOINT ["python", "-u", "/app/signed_input_worker.py"]
