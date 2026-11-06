@@ -1,0 +1,4 @@
+FROM ghcr.io/wlekin/h3-flex:ref-turbo-lite-lora-compat-1
+COPY resident_benchmark.py /app/
+RUN python -m py_compile /app/resident_benchmark.py
+ENTRYPOINT ["python", "-u", "/app/resident_benchmark.py"]
