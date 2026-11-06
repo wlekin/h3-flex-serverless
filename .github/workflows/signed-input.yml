@@ -23,4 +23,4 @@ jobs:
           file: Dockerfile.signed-input
           platforms: linux/amd64
           push: true
-          tags: ghcr.io/wlekin/h3-flex:ref-turbo-lite-signed-input-1
+          tags: ghcr.io/wlekin/h3-flex:ref-turbo-lite-signed-input-2

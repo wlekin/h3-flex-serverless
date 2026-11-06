@@ -2,7 +2,7 @@
 import base64
 import os
 import re
-from urllib.error import URLError
+from urllib.error import HTTPError, URLError
 from urllib.parse import urlsplit
 from urllib.request import HTTPRedirectHandler, Request, build_opener
 
@@ -26,10 +26,12 @@ def fetch_image(url, opener=None, limit=None):
         limit = int(os.environ.get("MAX_INPUT_MEDIA_BYTES", "7000000"))
     opener = opener or build_opener(NoRedirect())
     try:
-        with opener.open(Request(url), timeout=20) as response:
+        with opener.open(Request(url, headers={"User-Agent": "Mozilla/5.0"}), timeout=20) as response:
             if response.status != 200 or response.headers.get_content_type() not in IMAGE_TYPES:
                 raise ValueError("Signed H3 input must be a JPEG, PNG, or WebP image")
             content = response.read(limit + 1)
+    except HTTPError as exc:
+        raise ValueError(f"Signed H3 download returned HTTP {exc.code}") from exc
     except (OSError, URLError) as exc:
         raise ValueError("Could not download signed H3 input") from exc
     if not content or len(content) > limit:
@@ -85,8 +87,10 @@ def main():
                 data = job.get("input")
                 if isinstance(data, dict):
                     job = {**job, "input": resolve_input(data)}
-            except (ValueError, TypeError):
-                return {"error": "Could not load the signed H3 reference image"}
+            except ValueError as exc:
+                return {"error": str(exc)}
+            except TypeError:
+                return {"error": "Invalid signed H3 reference image"}
             return original(job)
 
         return start({**config, "handler": handler})
