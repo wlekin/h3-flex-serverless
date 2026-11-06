@@ -1,0 +1,4 @@
+FROM ghcr.io/wlekin/h3-flex:ref-turbo-lite-lora-compat-1
+COPY resident_worker.py /app/
+RUN python -m py_compile /app/resident_worker.py
+ENTRYPOINT ["python", "-u", "/app/resident_worker.py"]
