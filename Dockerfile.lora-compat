@@ -1,0 +1,3 @@
+FROM ghcr.io/wlekin/h3-flex:ref-turbo-lite-signed-input-2
+COPY lora_compat.py signed_input_worker.py /app/
+RUN python /app/lora_compat.py && python /app/lora_worker.py --self-test

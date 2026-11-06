@@ -2,6 +2,8 @@
 import base64
 import os
 import re
+import tempfile
+from pathlib import Path
 from urllib.error import HTTPError, URLError
 from urllib.parse import urlsplit
 from urllib.request import HTTPRedirectHandler, Request, build_opener
@@ -87,10 +89,21 @@ def main():
                 data = job.get("input")
                 if isinstance(data, dict):
                     job = {**job, "input": resolve_input(data)}
+                    if data.get("action") == "health" and data.get("loras"):
+                        import lora_worker
+                        volume = Path(os.environ.get("RUNPOD_VOLUME_PATH", "/runpod-volume"))
+                        specs = lora_worker.validate_loras(data["loras"])
+                        with tempfile.TemporaryDirectory(prefix="h3-lora-check-") as tmp:
+                            checked = []
+                            for spec in specs:
+                                source = volume / "h3-flex" / "loras" / spec["name"]
+                                info = lora_worker.convert(source, Path(tmp) / "check.safetensors")
+                                checked.append({"name": spec["name"], "modules": info["modules"]})
+                        return {**original(job), "checked_loras": checked}
             except ValueError as exc:
                 return {"error": str(exc)}
-            except TypeError:
-                return {"error": "Invalid signed H3 reference image"}
+            except (TypeError, OSError):
+                return {"error": "Invalid H3 input or missing LoRA file"}
             return original(job)
 
         return start({**config, "handler": handler})
