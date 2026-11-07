@@ -1,0 +1,5 @@
+FROM ghcr.io/wlekin/h3-flex:vsr-768-combo-1
+RUN python -m pip install --no-cache-dir "hyperflow-h3-flash[fp8] @ git+https://github.com/Video-Rebirth/hyperflow-h3-flash.git@3e0f34b94baea5b1710475a2c91ef0d0ee26ce34"
+COPY flash_benchmark.py /app/
+RUN python -m hyperflow_h3_flash --help
+ENTRYPOINT ["python", "-u", "/app/flash_benchmark.py"]

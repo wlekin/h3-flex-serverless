@@ -1,7 +1,7 @@
-name: Build H3 RelayVSR 768p test
+name: Build HyperFlow Flash benchmark
 on:
   push:
-    branches: [vsr-768-combo]
+    branches: [hyperflow-flash-test]
 permissions:
   contents: read
   packages: write
@@ -21,10 +21,11 @@ jobs:
       - uses: docker/build-push-action@v6
         with:
           context: .
-          file: Dockerfile.vsr-768-test
+          file: Dockerfile.flash-benchmark
           platforms: linux/amd64
           push: true
-          tags: ghcr.io/wlekin/h3-flex:vsr-768-combo-1
+          tags: ghcr.io/wlekin/h3-flex:hyperflow-flash-test-1
+
 
 
 
