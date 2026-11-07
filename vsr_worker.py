@@ -101,7 +101,9 @@ def main():
             output, details = upscale(source, metadata)
         except (ValueError, OSError, RuntimeError, subprocess.SubprocessError) as exc:
             # A failed optional upscale still returns the completed original.
-            return publish(source, {**metadata, "upscale_error": str(exc)})
+            fallback = {**metadata, "requested_upscale_factor": scale, "upscale_error": str(exc)}
+            source.with_suffix(".json").write_text(json.dumps(fallback, indent=2))
+            return publish(source, fallback)
         return publish(output, details)
 
     def standalone(data):
