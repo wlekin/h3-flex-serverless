@@ -28,8 +28,9 @@ def factor(value):
 def checked_source(source):
     before = probe(source)
     fps = Fraction(before["fps"])
-    if before["width"] * before["height"] > 1408 * 768 or before["frames"] > 132 or not 1 <= fps <= 30:
-        raise ValueError("Upscaling currently supports 768p-class clips up to 132 frames at 30 fps")
+    max_pixels = 1408 * 768 if FACTOR.get() == 2 else 864 * 480
+    if before["width"] * before["height"] > max_pixels or before["frames"] > 132 or not 1 <= fps <= 30:
+        raise ValueError("Video exceeds the size or frame limit for this upscale factor")
     return before
 
 
