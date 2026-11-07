@@ -1,0 +1,3 @@
+FROM ghcr.io/wlekin/h3-flex:vsr-worker-1
+COPY vsr_worker.py /app/
+RUN python -m py_compile /app/vsr_worker.py

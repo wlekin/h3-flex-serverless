@@ -28,8 +28,8 @@ def factor(value):
 def checked_source(source):
     before = probe(source)
     fps = Fraction(before["fps"])
-    if before["width"] * before["height"] > 864 * 480 or before["frames"] > 132 or not 1 <= fps <= 30:
-        raise ValueError("Upscaling currently supports 480p-class clips up to 132 frames at 30 fps")
+    if before["width"] * before["height"] > 1408 * 768 or before["frames"] > 132 or not 1 <= fps <= 30:
+        raise ValueError("Upscaling currently supports 768p-class clips up to 132 frames at 30 fps")
     return before
 
 
