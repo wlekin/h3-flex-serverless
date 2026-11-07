@@ -156,8 +156,8 @@ def main():
                         return standalone(data)
                     data = dict(data)
                     scale = factor(data.pop("upscale_factor", 1))
-                    if scale != 1 and (data.get("resolution", "480p") != "480p" or data.get("duration", 5) != 5):
-                        raise ValueError("H3 upscaling currently requires 480p and 5 seconds")
+                    if scale != 1 and (data.get("resolution", "480p") not in (("480p", "768p") if scale == 2 else ("480p",)) or data.get("duration", 5) != 5):
+                        raise ValueError("H3 upscale requires five seconds, with 4x limited to 480p")
                     token = FACTOR.set(scale)
                     try:
                         return original({**job, "input": data})
