@@ -1,0 +1,4 @@
+FROM ghcr.io/wlekin/h3-flex:relayvsr-test-1
+COPY h3_relayvsr_combo_test.py /app/
+RUN python -m py_compile /app/h3_relayvsr_combo_test.py
+ENTRYPOINT ["python", "-u", "/app/h3_relayvsr_combo_test.py"]
