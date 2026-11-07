@@ -1,0 +1,6 @@
+FROM ghcr.io/wlekin/h3-flex:relayvsr-test-1
+ADD --checksum=sha256:21303b3c5f9ab4e1fd3fe00df5dd2e0b343f0cf2e3d269e03a9872000a313a2e https://huggingface.co/Comfy-Org/RelayVSR/resolve/main/diffusion_models/relayvsr_x4_int8_convrot.safetensors /opt/ComfyUI/models/diffusion_models/relayvsr_x4_int8_convrot.safetensors
+ADD --checksum=sha256:7b8b8c99275fd5c4501b0589cc7b4c4506456a5df83160ef4e207e147b30f714 https://huggingface.co/Comfy-Org/RelayVSR/resolve/main/vae/relayvsr_flash_vae_x4_fp32.safetensors /opt/ComfyUI/models/vae/relayvsr_flash_vae_x4_fp32.safetensors
+COPY vsr_worker.py /app/
+RUN python -m py_compile /app/vsr_worker.py
+ENTRYPOINT ["python", "-u", "/app/vsr_worker.py"]
