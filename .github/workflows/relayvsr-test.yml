@@ -1,0 +1,33 @@
+name: Build H3 RelayVSR test
+on:
+  push:
+    branches: [relayvsr-test]
+permissions:
+  contents: read
+  packages: write
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - run: python3 -m py_compile relayvsr_test_worker.py
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - uses: docker/setup-buildx-action@v3
+      - uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: Dockerfile.relayvsr-test
+          platforms: linux/amd64
+          push: true
+          tags: ghcr.io/wlekin/h3-flex:relayvsr-test-1
+
+
+
+
+
+

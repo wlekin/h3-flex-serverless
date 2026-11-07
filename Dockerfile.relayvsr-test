@@ -1,0 +1,8 @@
+FROM ghcr.io/wlekin/h3-flex:resident-mystic-v5-1
+RUN git init /opt/ComfyUI && git -C /opt/ComfyUI fetch --depth=1 https://github.com/Comfy-Org/ComfyUI.git 2f8943324e1eae89a5ee6c7db93602299246b5f1 && git -C /opt/ComfyUI checkout FETCH_HEAD
+RUN pip install --no-cache-dir -r /opt/ComfyUI/requirements.txt
+ADD --checksum=sha256:240e75e0c17cf2845d559b25254a230ff7458f81449d7a8c5e7e3fb8275c7b3c https://huggingface.co/Comfy-Org/RelayVSR/resolve/main/diffusion_models/relayvsr_x2_lightx2v_int8_convrot.safetensors /opt/ComfyUI/models/diffusion_models/relayvsr_x2_lightx2v_int8_convrot.safetensors
+ADD --checksum=sha256:b5bb0339acb5b52545911ea29a51b4c5b805776a779222b5a14591571f42e21c https://huggingface.co/Comfy-Org/RelayVSR/resolve/main/vae/relayvsr_flash_vae_x2_fp32.safetensors /opt/ComfyUI/models/vae/relayvsr_flash_vae_x2_fp32.safetensors
+COPY relayvsr_test_worker.py /app/
+RUN python -m py_compile /app/relayvsr_test_worker.py
+ENTRYPOINT ["python", "-u", "/app/relayvsr_test_worker.py"]
